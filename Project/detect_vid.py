@@ -12,7 +12,7 @@ frame_height = int(cap.get(4))
 out = cv2.VideoWriter('output/video_result_1.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 30, (frame_width, frame_height))
 
 
-def yolov3(frame):
+def yolo(frame):
     with open('files/object_detection_classes_coco.txt', 'r') as f:
         class_names = f.read().split('\n')
 
@@ -51,7 +51,7 @@ def yolov3(frame):
             confidence = scores[classID]
             # filter out weak predictions by ensuring the detected
             # probability is greater than the minimum probability
-            if confidence > 0.2:
+            if confidence > 0.1:
                 # scale the bounding box coordinates back relative to the
                 # size of the image, keeping in mind that YOLO actually
                 # returns the center (x, y)-coordinates of the bounding
@@ -86,58 +86,28 @@ def yolov3(frame):
     return image_copy
 
 def caffe(frame):
-    with open('files/classification_classes_ILSVRC2012.txt', 'r') as f:
-        image_net_names = f.read().split('\n')
+    with open('files/object_detection_classes_coco.txt', 'r') as f:
+        class_names = f.read().split('\n')
+    CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus",  "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
+    COLORS = np.random.uniform(0, 255, size=(len(CLASSES), 3))
+    net = cv2.dnn.readNet(model='files/MobileNetSSD_deploy.caffemodel', config='files/MobileNetSSD_deploy.prototxt', framework='Caffe')
+    h, w = frame.shape[:2]
+    blob = cv2.dnn.blobFromImage(frame, 0.007843, (300, 300), 127.5)
+    net.setInput(blob)
+    detections = net.forward()
+    for i in np.arange(0, detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        if confidence > 0.55:
+            idx = int(detections[0, 0, i, 1])
+            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            (startX, startY, endX, endY) = box.astype("int")
+            label = "{}: {:.2f}%".format(CLASSES[idx],confidence*100)
+            cv2.rectangle(frame, (startX, startY), (endX, endY),    COLORS[idx], 2)
+            y = startY - 15 if startY - 15 > 15 else startY + 15
+            cv2.putText(frame, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
     
-    class_names = [name.split(',')[0] for name in image_net_names]
+    return frame
 
-    COLORS = np.random.uniform(0, 255, size=(len(class_names), 3))
-    # load the neural network model
-    yolo_model = cv2.dnn.readNet(model='files/DenseNet_121.caffemodel', config='files/DenseNet_121.prototxt', framework='Caffe')
-
-    ln = yolo_model.getLayerNames()
-    ln = [ln[i-1] for i in yolo_model.getUnconnectedOutLayers()]
-
-    print(ln)
-
-    image_height, image_width, _ = frame.shape
-
-    blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)),0.007843, (300, 300), 127.5)
-    yolo_model.setInput(blob)
-
-    layerOutputs = yolo_model.forward(ln)
-
-    boxes = []
-    confidences = []
-    classIDs = []
-
-    image_copy = np.copy(frame)
-
-    # loop over each of the layer outputs
-    # loop over the detections
-	for i in np.arange(0, layerOutputs.shape[2]):
-		# extract the confidence (i.e., probability) associated with
-		# the prediction
-		confidence = layerOutputs[0, 0, i, 2]
-		# filter out weak detections by ensuring the `confidence` is
-		# greater than the minimum confidence
-		if confidence > args["confidence"]:
-			# extract the index of the class label from the
-			# `detections`, then compute the (x, y)-coordinates of
-			# the bounding box for the object
-			idx = int(layerOutputs[0, 0, i, 1])
-			box = layerOutputs[0, 0, i, 3:7] * np.array([w, h, w, h])
-			(startX, startY, endX, endY) = box.astype("int")
-			# draw the prediction on the frame
-			label = "{}: {:.2f}%".format(CLASSES[idx],
-				confidence * 100)
-			cv2.rectangle(frame, (startX, startY), (endX, endY),
-				COLORS[idx], 2)
-			y = startY - 15 if startY - 15 > 15 else startY + 15
-			cv2.putText(frame, label, (startX, y),
-				cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
-
-    return image_copy
 
 def tensor(image):
     with open('files/object_detection_classes_coco.txt', 'r') as f:
@@ -190,9 +160,9 @@ while cap.isOpened():
         img_hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
         img_hsv[:, :, 2] = cv2.equalizeHist(img_hsv[:, :, 2])
         image = cv2.cvtColor(img_hsv, cv2.COLOR_HSV2RGB)
-        n_image = caffe(image)
-        cv2.imshow('image', n_image)
-        out.write(image)
+        n_image = (frame)
+        out.write(n_image)
+        cv2.imshow('image', frame)
         if cv2.waitKey(10) & 0xFF == ord('q'):
             break
     else:
